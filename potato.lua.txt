@@ -1,5 +1,5 @@
 --[[
-    Potato's Ultimate Hub – Full Script with Mouse Aim & Outline Range Fix
+    Potato's Ultimate Hub – Mouse Aim on Left Click + Adjustable Smoothness
     Yêu cầu: Executor hỗ trợ Drawing Library
 --]]
 
@@ -25,9 +25,10 @@ local RENDER_DISTANCE = 500
 local config = {
     aimbot = {
         enabled = false,
-        mouseAim = false,       -- true = dùng chuột, false = dùng camera
+        mouseAim = false,             -- true = dùng chuột (chỉ khi giữ chuột trái)
+        mouseAimSmoothness = 5,       -- độ mượt cho mouse aim (0.1 - 20)
         fov = 120,
-        smoothness = 0.95,
+        smoothness = 0.95,            -- smoothness cho camera aim
         teamCheck = false,
         aimPart = "Head"
     },
@@ -169,7 +170,6 @@ local function drawESP()
         color = Color3.fromHSV(colorHue, 1, 1)
     end
 
-    -- Danh sách player đã được vẽ trong khoảng cách
     local drawnPlayers = {}
 
     for _, player in ipairs(Players:GetPlayers()) do
@@ -615,7 +615,8 @@ local function createUI()
     -- ========== AIMBOT PAGE ==========
     local aimPage = pages["Aimbot"]
     createToggle(aimPage, "Enable Aimbot", function(v) config.aimbot.enabled = v end)
-    createToggle(aimPage, "Mouse Aim", function(v) config.aimbot.mouseAim = v end)  -- mới
+    createToggle(aimPage, "Mouse Aim", function(v) config.aimbot.mouseAim = v end)
+    createSlider(aimPage, "Mouse Smoothness", 0.1, 20, config.aimbot.mouseAimSmoothness, function(v) config.aimbot.mouseAimSmoothness = v end)
     createAimPartSelector(aimPage)
     createSlider(aimPage, "FOV Radius", 30, 500, config.aimbot.fov, function(v) config.aimbot.fov = v end)
     createSlider(aimPage, "Smoothness", 0.1, 1, config.aimbot.smoothness, function(v) config.aimbot.smoothness = v end)
@@ -632,7 +633,7 @@ local function createUI()
     createToggle(visualPage, "Line", function(v) config.visual.line = v end)
     createToggle(visualPage, "Player Outline", function(v) config.visual.playerOutline = v end)
 
-    -- Color picker
+    -- Color picker (giữ nguyên)
     local colorFrame = Instance.new("Frame")
     colorFrame.Size = UDim2.new(1, -20, 0, 60)
     colorFrame.Position = UDim2.new(0, 10, 0, #visualPage:GetChildren() * 35 + 10)
@@ -705,7 +706,7 @@ local function createUI()
         if v then startNoclip() else stopNoclip() end
     end)
 
-    -- Teleport
+    -- Teleport (giữ nguyên)
     local teleFrame = Instance.new("Frame")
     teleFrame.Size = UDim2.new(1, -20, 0, 70)
     teleFrame.Position = UDim2.new(0, 10, 0, #playerPage:GetChildren() * 35 + 10)
@@ -756,7 +757,7 @@ local function createUI()
     end
 end
 
--- Logo
+-- Logo (giữ nguyên)
 function createLogoButton(gui, main)
     if logoButton then return end
     local logoGui = Instance.new("ScreenGui")
@@ -807,7 +808,7 @@ function createLogoButton(gui, main)
     end)
 end
 
--- ================== FLY & NOCLIP ==================
+-- ================== FLY & NOCLIP (giữ nguyên) ==================
 local flyConnection, noclipConnection
 
 function startFly()
@@ -916,6 +917,11 @@ RunService.Heartbeat:Connect(function()
 
     if not config.aimbot.enabled then return end
 
+    -- Mouse Aim chỉ hoạt động khi giữ chuột trái
+    if config.aimbot.mouseAim and not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+        return
+    end
+
     local target = findClosestPlayerToCursor(config.aimbot.fov)
     if not target then return end
     local char = getCharacter(target)
@@ -927,16 +933,16 @@ RunService.Heartbeat:Connect(function()
     if not aimPart then return end
 
     if config.aimbot.mouseAim then
-        -- Dùng chuột (mousemoverel)
+        -- Dùng chuột (mousemoverel) với smoothness riêng
         local screenPos, onScreen = worldToScreen(aimPart.Position)
         if onScreen and mousemoverel then
             local mousePos = UserInputService:GetMouseLocation()
             local deltaX = screenPos.X - mousePos.X
             local deltaY = screenPos.Y - mousePos.Y
-            mousemoverel(deltaX * config.aimbot.smoothness, deltaY * config.aimbot.smoothness)
+            mousemoverel(deltaX * config.aimbot.mouseAimSmoothness / 10, deltaY * config.aimbot.mouseAimSmoothness / 10)
         end
     else
-        -- Dùng camera
+        -- Dùng camera (smoothness gốc)
         Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, aimPart.Position), config.aimbot.smoothness)
     end
 end)
