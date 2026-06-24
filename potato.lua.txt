@@ -1,6 +1,5 @@
 --[[
-    Potato's Ultimate Hub – Mouse Aim on Left Click + Adjustable Smoothness
-    Yêu cầu: Executor hỗ trợ Drawing Library
+    Potato's Ultimate Hub – Rainbow Speed Control
 --]]
 
 local Players = game:GetService("Players")
@@ -25,10 +24,10 @@ local RENDER_DISTANCE = 500
 local config = {
     aimbot = {
         enabled = false,
-        mouseAim = false,             -- true = dùng chuột (chỉ khi giữ chuột trái)
-        mouseAimSmoothness = 5,       -- độ mượt cho mouse aim (0.1 - 20)
+        mouseAim = false,
+        mouseAimSmoothness = 5,
         fov = 120,
-        smoothness = 0.95,            -- smoothness cho camera aim
+        smoothness = 0.95,
         teamCheck = false,
         aimPart = "Head"
     },
@@ -42,7 +41,8 @@ local config = {
         line = false,
         playerOutline = false,
         color = Color3.fromRGB(0, 255, 0),
-        rainbow = false
+        rainbow = false,
+        rainbowSpeed = 1       -- tốc độ cầu vồng (0.5 -> 5)
     },
     player = {
         walkspeed = 16,
@@ -166,7 +166,7 @@ local function drawESP()
 
     local color = config.visual.color
     if config.visual.rainbow then
-        colorHue = (colorHue + 0.02) % 1
+        colorHue = (colorHue + 0.005 * config.visual.rainbowSpeed) % 1
         color = Color3.fromHSV(colorHue, 1, 1)
     end
 
@@ -632,15 +632,17 @@ local function createUI()
     createToggle(visualPage, "Name", function(v) config.visual.name = v end)
     createToggle(visualPage, "Line", function(v) config.visual.line = v end)
     createToggle(visualPage, "Player Outline", function(v) config.visual.playerOutline = v end)
+    createToggle(visualPage, "Rainbow", function(v) config.visual.rainbow = v end)
+    createSlider(visualPage, "Rainbow Speed", 0.5, 5, config.visual.rainbowSpeed, function(v) config.visual.rainbowSpeed = v end)
 
-    -- Color picker (giữ nguyên)
+    -- Color picker
     local colorFrame = Instance.new("Frame")
     colorFrame.Size = UDim2.new(1, -20, 0, 60)
     colorFrame.Position = UDim2.new(0, 10, 0, #visualPage:GetChildren() * 35 + 10)
     colorFrame.BackgroundTransparency = 1
     colorFrame.Parent = visualPage
     local colorLabel = Instance.new("TextLabel")
-    colorLabel.Text = "Color:"
+    colorLabel.Text = "Static Color:"
     colorLabel.Size = UDim2.new(0.3, 0, 0, 20)
     colorLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     colorLabel.Font = Enum.Font.Gotham
@@ -654,7 +656,7 @@ local function createUI()
     for i, c in ipairs(colors) do
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(0, 20, 0, 20)
-        btn.Position = UDim2.new(0.3 + (i-1)*0.07, 0, 0, 25)
+        btn.Position = UDim2.new(0.35 + (i-1)*0.07, 0, 0, 25)
         btn.BackgroundColor3 = c
         btn.BorderSizePixel = 0
         btn.Text = ""
@@ -662,25 +664,9 @@ local function createUI()
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
         btn.MouseButton1Click:Connect(function()
             config.visual.color = c
-            config.visual.rainbow = false
+            config.visual.rainbow = false  -- tắt rainbow khi chọn màu tĩnh
         end)
     end
-    local rainbowBtn = Instance.new("TextButton")
-    rainbowBtn.Size = UDim2.new(0, 60, 0, 20)
-    rainbowBtn.Position = UDim2.new(0.75, 0, 0, 25)
-    rainbowBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
-    rainbowBtn.Text = "Rainbow"
-    rainbowBtn.TextColor3 = Color3.fromRGB(255,255,255)
-    rainbowBtn.Font = Enum.Font.Gotham
-    rainbowBtn.TextSize = 10
-    rainbowBtn.Parent = colorFrame
-    Instance.new("UICorner", rainbowBtn).CornerRadius = UDim.new(0, 4)
-    local rainbowState = false
-    rainbowBtn.MouseButton1Click:Connect(function()
-        rainbowState = not rainbowState
-        rainbowBtn.BackgroundColor3 = rainbowState and Color3.fromRGB(255,100,100) or Color3.fromRGB(50,50,50)
-        config.visual.rainbow = rainbowState
-    end)
 
     -- ========== PLAYER PAGE ==========
     local playerPage = pages["Player"]
@@ -706,7 +692,7 @@ local function createUI()
         if v then startNoclip() else stopNoclip() end
     end)
 
-    -- Teleport (giữ nguyên)
+    -- Teleport
     local teleFrame = Instance.new("Frame")
     teleFrame.Size = UDim2.new(1, -20, 0, 70)
     teleFrame.Position = UDim2.new(0, 10, 0, #playerPage:GetChildren() * 35 + 10)
@@ -757,7 +743,7 @@ local function createUI()
     end
 end
 
--- Logo (giữ nguyên)
+-- Logo
 function createLogoButton(gui, main)
     if logoButton then return end
     local logoGui = Instance.new("ScreenGui")
@@ -808,7 +794,7 @@ function createLogoButton(gui, main)
     end)
 end
 
--- ================== FLY & NOCLIP (giữ nguyên) ==================
+-- ================== FLY & NOCLIP ==================
 local flyConnection, noclipConnection
 
 function startFly()
@@ -917,7 +903,6 @@ RunService.Heartbeat:Connect(function()
 
     if not config.aimbot.enabled then return end
 
-    -- Mouse Aim chỉ hoạt động khi giữ chuột trái
     if config.aimbot.mouseAim and not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
         return
     end
@@ -933,7 +918,6 @@ RunService.Heartbeat:Connect(function()
     if not aimPart then return end
 
     if config.aimbot.mouseAim then
-        -- Dùng chuột (mousemoverel) với smoothness riêng
         local screenPos, onScreen = worldToScreen(aimPart.Position)
         if onScreen and mousemoverel then
             local mousePos = UserInputService:GetMouseLocation()
@@ -942,7 +926,6 @@ RunService.Heartbeat:Connect(function()
             mousemoverel(deltaX * config.aimbot.mouseAimSmoothness / 10, deltaY * config.aimbot.mouseAimSmoothness / 10)
         end
     else
-        -- Dùng camera (smoothness gốc)
         Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, aimPart.Position), config.aimbot.smoothness)
     end
 end)
