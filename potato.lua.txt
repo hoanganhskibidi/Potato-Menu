@@ -1,5 +1,6 @@
 --[[
-    Potato's Ultimate Hub – Rainbow Speed Control
+    Potato's Ultimate Hub – Team Check for ESP + Performance Optimized
+    Yêu cầu: Executor hỗ trợ Drawing Library
 --]]
 
 local Players = game:GetService("Players")
@@ -42,7 +43,8 @@ local config = {
         playerOutline = false,
         color = Color3.fromRGB(0, 255, 0),
         rainbow = false,
-        rainbowSpeed = 1       -- tốc độ cầu vồng (0.5 -> 5)
+        rainbowSpeed = 1,
+        teamCheck = false    -- dùng chung với aimbot hoặc riêng
     },
     player = {
         walkspeed = 16,
@@ -69,8 +71,27 @@ local function getTeam(player)
     return player.Team
 end
 
+-- Hàm kiểm tra team cho cả ESP và Aimbot
 local function isTeammate(player)
-    return config.aimbot.teamCheck and getTeam(player) == getTeam(LocalPlayer)
+    return (config.aimbot.teamCheck or config.visual.teamCheck) and getTeam(player) == getTeam(LocalPlayer)
+end
+
+-- Hàm kiểm tra có nên hiển thị ESP cho player không
+local function shouldShowPlayer(player)
+    if player == LocalPlayer then return false end
+    local char = getCharacter(player)
+    if not char then return false end
+    local humanoid = char:FindFirstChild("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then return false end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+    local head = char:FindFirstChild("Head")
+    if not head then return false end
+    -- Kiểm tra khoảng cách
+    if (root.Position - Camera.CFrame.Position).Magnitude > RENDER_DISTANCE then return false end
+    -- Kiểm tra team (nếu bật)
+    if isTeammate(player) then return false end
+    return true
 end
 
 local function findClosestPlayerToCursor(fovRadius)
@@ -101,7 +122,11 @@ local function findClosestPlayerToCursor(fovRadius)
     return closest
 end
 
+-- Tối ưu: cache bouding box trong 1 frame
+local boundingBoxCache = {}
 local function getBoundingBox(character)
+    -- Nếu đã tính trong frame này thì trả về cache
+    if boundingBoxCache[character] then return boundingBoxCache[character][1], boundingBoxCache[character][2] end
     local minX, minY, maxX, maxY
     for _, part in pairs(character:GetChildren()) do
         if part:IsA("BasePart") then
@@ -132,7 +157,13 @@ local function getBoundingBox(character)
             end
         end
     end
-    if minX then return Vector2.new(minX, minY), Vector2.new(maxX, maxY) end
+    if minX then
+        local minVec = Vector2.new(minX, minY)
+        local maxVec = Vector2.new(maxX, maxY)
+        boundingBoxCache[character] = {minVec, maxVec}
+        return minVec, maxVec
+    end
+    boundingBoxCache[character] = {nil, nil}
     return nil, nil
 end
 
@@ -156,8 +187,10 @@ local function clearHighlights()
     end
 end
 
--- Vẽ ESP
+-- Vẽ ESP (đã tối ưu)
 local function drawESP()
+    -- Xóa cache bounding box đầu frame
+    boundingBoxCache = {}
     clearAll()
     if not config.visual.enabled then
         clearHighlights()
@@ -173,26 +206,23 @@ local function drawESP()
     local drawnPlayers = {}
 
     for _, player in ipairs(Players:GetPlayers()) do
-        if player == LocalPlayer then continue end
+        if not shouldShowPlayer(player) then continue end
         local char = getCharacter(player)
-        if not char then continue end
+        -- shouldShowPlayer đã kiểm tra char, humanoid, root, head, khoảng cách, team
         local humanoid = char:FindFirstChild("Humanoid")
-        if not humanoid or humanoid.Health <= 0 then continue end
-
         local head = char:FindFirstChild("Head")
         local root = char:FindFirstChild("HumanoidRootPart")
-        if not head or not root then continue end
-
-        local distance = (root.Position - Camera.CFrame.Position).Magnitude
-        if distance > RENDER_DISTANCE then continue end
 
         drawnPlayers[player] = true
 
         local headPos, headVis = worldToScreen(head.Position)
         local rootPos, rootVis = worldToScreen(root.Position)
 
-        -- Box
-        if config.visual.box then
+        -- Nếu không nhìn thấy head và root thì bỏ qua (tiết kiệm)
+        if not headVis and not rootVis then continue end
+
+        -- Box (chỉ cần 1 trong 2 visible)
+        if config.visual.box and (headVis or rootVis) then
             local min, max = getBoundingBox(char)
             if min and max then
                 local box = Drawing.new("Square")
@@ -206,7 +236,7 @@ local function drawESP()
             end
         end
 
-        -- Skeleton
+        -- Skeleton (cần headVis)
         if config.visual.skeleton and headVis then
             local connections = {}
             if char:FindFirstChild("UpperTorso") then
@@ -245,10 +275,11 @@ local function drawESP()
             end
         end
 
-        -- Distance
+        -- Distance (cần headVis)
         if config.visual.distance and headVis then
+            local dist = (root.Position - Camera.CFrame.Position).Magnitude
             local text = Drawing.new("Text")
-            text.Text = string.format("%.0f studs", distance)
+            text.Text = string.format("%.0f studs", dist)
             text.Size = 12
             text.Color = color
             text.Position = Vector2.new(headPos.X, headPos.Y - 25)
@@ -257,8 +288,8 @@ local function drawESP()
             table.insert(activeDrawings, text)
         end
 
-        -- Health
-        if config.visual.health then
+        -- Health (cần headVis và bounding box)
+        if config.visual.health and headVis then
             local min, max = getBoundingBox(char)
             if min and max then
                 local height = max.Y - min.Y
@@ -286,7 +317,7 @@ local function drawESP()
             end
         end
 
-        -- Name
+        -- Name (cần headVis)
         if config.visual.name and headVis then
             local text = Drawing.new("Text")
             text.Text = player.Name
@@ -298,7 +329,7 @@ local function drawESP()
             table.insert(activeDrawings, text)
         end
 
-        -- Line
+        -- Line (cần headVis)
         if config.visual.line and headVis then
             local topCenter = Vector2.new(Camera.ViewportSize.X/2, 0)
             local line = Drawing.new("Line")
@@ -310,7 +341,7 @@ local function drawESP()
             table.insert(activeDrawings, line)
         end
 
-        -- Player Outline
+        -- Player Outline (không cần headVis)
         if config.visual.playerOutline then
             local existing = char:FindFirstChild("PotatoOutline")
             if not existing then
@@ -620,7 +651,10 @@ local function createUI()
     createAimPartSelector(aimPage)
     createSlider(aimPage, "FOV Radius", 30, 500, config.aimbot.fov, function(v) config.aimbot.fov = v end)
     createSlider(aimPage, "Smoothness", 0.1, 1, config.aimbot.smoothness, function(v) config.aimbot.smoothness = v end)
-    createToggle(aimPage, "Team Check", function(v) config.aimbot.teamCheck = v end)
+    createToggle(aimPage, "Team Check", function(v)
+        config.aimbot.teamCheck = v
+        config.visual.teamCheck = v   -- đồng bộ
+    end)
 
     -- ========== VISUAL PAGE ==========
     local visualPage = pages["Visual"]
@@ -664,7 +698,7 @@ local function createUI()
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
         btn.MouseButton1Click:Connect(function()
             config.visual.color = c
-            config.visual.rainbow = false  -- tắt rainbow khi chọn màu tĩnh
+            config.visual.rainbow = false
         end)
     end
 
